@@ -1,148 +1,95 @@
-import Layout from "../components/Layout";
-import { Card, Stat } from "../components/UI";
-import { successRadar, qualityVsReading } from "../data/mock";
+
+// src/pages/Insights.jsx
+import { useEffect, useState } from "react";
+import { Card, CardContent } from "@/components/Ui"; // Updated to match Ui.jsx
+import { Button } from "@/components/Ui"; // Updated to match Ui.jsx
 import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer,
-  LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ScatterChart, Scatter, ZAxis
+  LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid
 } from "recharts";
-import { useEffect, useRef } from "react";
-import gsap from "gsap";
+import { motion } from "framer-motion";
 
+// Configure API URL
+const API_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:8000/insight_gen";
 
 export default function Insights() {
-  // Refs for animated sections
-  const statsRef = useRef();
-  const chartsRef = useRef();
-  const recsRef = useRef();
-  const matrixRef = useRef();
-  const whatIfRef = useRef();
+  const [insights, setInsights] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    gsap.fromTo(statsRef.current, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" });
-    gsap.fromTo(chartsRef.current, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.8, delay: 0.2, ease: "power3.out" });
-    gsap.fromTo(recsRef.current, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.8, delay: 0.4, ease: "power3.out" });
-    gsap.fromTo(matrixRef.current, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.8, delay: 0.6, ease: "power3.out" });
-    gsap.fromTo(whatIfRef.current, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.8, delay: 0.8, ease: "power3.out" });
+    setLoading(true);
+    setError(null);
+    fetch(API_URL)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.error) {
+          setError(data.error);
+          setInsights([]);
+        } else {
+          setInsights(data.insights || []);
+        }
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError("Failed to fetch insights. Please try again later.");
+        setInsights([]);
+        setLoading(false);
+      });
   }, []);
 
-  return (
-    <Layout title="AI Strategic Insights & Recommendations">
-      {/* Strategic Overview */}
-      <div ref={statsRef} className="grid md:grid-cols-4 gap-4">
-        <Stat label="Your Unique Positioning Score" value="78/100" sub="Differentiation rating"/>
-        <Stat label="Market Gap Opportunities" value="5" sub="Underutilized angles"/>
-        <Stat label="Moat Strength" value="Strong" sub="Data + Models + Brand"/>
-        <Stat label="Threat Assessment" value="Medium" sub="3 active risks"/>
-      </div>
+  if (loading) return <p className="text-center text-lg mt-10" role="status">Loading insights...</p>;
+  if (error) return (
+    <div className="text-center text-lg mt-10 text-red-600" role="alert">
+      {error}
+      <div className="mt-4"><Button onClick={() => window.location.reload()}>🔄 Try Again</Button></div>
+    </div>
+  );
+  if (insights.length === 0) return (
+    <div className="text-center text-lg mt-10" role="alert">
+      No insights available. Please upload your data and try again.
+      <div className="mt-4"><Button onClick={() => window.location.reload()}>🔄 Refresh</Button></div>
+    </div>
+  );
 
-      {/* Charts */}
-      <div ref={chartsRef} className="grid lg:grid-cols-3 gap-4 mt-6">
-        <Card className="lg:col-span-2">
-          <div className="text-sm text-gray-500 mb-2">Success Probability (Strategy Mix)</div>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart data={successRadar}>
-                <PolarGrid />
-                <PolarAngleAxis dataKey="factor" />
-                <PolarRadiusAxis />
-                <Radar dataKey="score" name="Success %" strokeWidth={2} />
-                <Tooltip />
+  return (
+    <div className="p-6 space-y-8">
+      <h1 className="text-3xl font-bold text-center" role="heading" aria-level="1">📊 AI-Powered Insights</h1>
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {insights.map((insight, idx) => (
+          <motion.div key={idx} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: idx * 0.1 }}>
+            <Card className="shadow-lg rounded-2xl border border-gray-200 hover:shadow-xl transition">
+              <CardContent className="p-4">
+                <h2 className="font-semibold text-lg mb-2" aria-label={`Insight ${idx + 1}`}>Insight {idx + 1}</h2>
+                <p className="text-gray-700">{insight}</p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ))}
+      </div>
+      <div className="grid md:grid-cols-2 gap-8">
+        <Card className="shadow-md p-4">
+          <CardContent className="p-4">
+            <h2 className="text-xl font-semibold mb-4" aria-label="Radar Overview">Radar Overview</h2>
+            <ResponsiveContainer width="100%" height="100%" aspect={4/3}>
+              <RadarChart cx="50%" cy="50%" outerRadius="80%" data={insights.map((i, idx) => ({ name: `Insight ${idx + 1}`, value: i.length }))} aria-label="Radar chart showing insight metrics">
+                <PolarGrid /><PolarAngleAxis dataKey="name" /><PolarRadiusAxis /><Radar name="Insights" dataKey="value" stroke="#4f46e5" fill="#6366f1" fillOpacity={0.6} />
               </RadarChart>
             </ResponsiveContainer>
-          </div>
+          </CardContent>
         </Card>
-
-        <Card>
-          <div className="text-sm text-gray-500 mb-2">Reading Level vs Quality Score</div>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={qualityVsReading}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="level" />
-                <YAxis />
-                <Tooltip />
-                <Line type="monotone" dataKey="quality" strokeWidth={2} />
+        <Card className="shadow-md p-4">
+          <CardContent className="p-4">
+            <h2 className="text-xl font-semibold mb-4" aria-label="Line Trend">Line Trend</h2>
+            <ResponsiveContainer width="100%" height="100%" aspect={4/3}>
+              <LineChart data={insights.map((i, idx) => ({ name: `Insight ${idx + 1}`, value: i.length }))}>
+                <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Line type="monotone" dataKey="value" stroke="#10b981" strokeWidth={2} />
               </LineChart>
             </ResponsiveContainer>
-          </div>
+          </CardContent>
         </Card>
       </div>
-
-      {/* Recommendations */}
-      <div ref={recsRef} className="grid md:grid-cols-2 gap-4 mt-6">
-        <Card>
-          <div className="font-semibold mb-2">Content Strategy Optimization</div>
-          <ul className="list-disc pl-5 text-sm space-y-1 text-gray-700">
-            <li>Increase CTA strength — ~70% competitors use weak CTAs → +40% performance opportunity.</li>
-            <li>Add urgency elements — current market “Low” urgency; try “Limited Time” → +25% CTR.</li>
-            <li>Leverage social proof — “10,000+ students”, “Industry-recognized”.</li>
-            <li>Consider aspiration triggers over authority (market saturation).</li>
-          </ul>
-        </Card>
-        <Card>
-          <div className="font-semibold mb-2">Performance-Based Campaign Strategy</div>
-          <ul className="list-disc pl-5 text-sm space-y-1 text-gray-700">
-            <li>Target Quality Score &gt; 4.6 (above competitor average).</li>
-            <li>Emphasize certification messaging — correlates with higher quality.</li>
-            <li>Optimize for Medium+ reading level.</li>
-            <li>LinkedIn: Avg CTR 0.4% — target 0.6%+ with stronger CTAs.</li>
-          </ul>
-        </Card>
-      </div>
-
-      {/* Priority Matrix (simple grid) */}
-      <Card ref={matrixRef} className="mt-6">
-        <div className="font-semibold mb-3">Implementation Priority Matrix</div>
-        <div className="grid md:grid-cols-2 gap-4">
-          <div>
-            <div className="text-sm font-semibold">High Impact, Low Effort</div>
-            <ul className="list-disc pl-5 text-sm space-y-1">
-              <li>Strengthen CTA language</li>
-              <li>Add urgency phrases</li>
-            </ul>
-          </div>
-          <div>
-            <div className="text-sm font-semibold">High Impact, Medium Effort</div>
-            <ul className="list-disc pl-5 text-sm space-y-1">
-              <li>Job guarantee messaging</li>
-              <li>Social proof modules</li>
-            </ul>
-          </div>
-          <div>
-            <div className="text-sm font-semibold">High Impact, High Effort</div>
-            <ul className="list-disc pl-5 text-sm space-y-1">
-              <li>Mentor-focused campaign</li>
-              <li>Placement tracking loop</li>
-            </ul>
-          </div>
-          <div>
-            <div className="text-sm font-semibold">Medium Impact, Low Effort</div>
-            <ul className="list-disc pl-5 text-sm space-y-1">
-              <li>Tune reading level</li>
-              <li>Optimize keyword density</li>
-            </ul>
-          </div>
-        </div>
-      </Card>
-
-      {/* What-if/Scenario placeholder */}
-      <div ref={whatIfRef} className="grid md:grid-cols-3 gap-4 mt-6">
-        <Card>
-          <div className="text-sm text-gray-500 mb-1">Budget Reallocation</div>
-          <div className="text-xl font-bold">+12% ROI</div>
-          <div className="text-xs text-gray-500">Shift 10% to Google</div>
-        </Card>
-        <Card>
-          <div className="text-sm text-gray-500 mb-1">Creative Approach</div>
-          <div className="text-xl font-bold">+8% CTR</div>
-          <div className="text-xs text-gray-500">Casual tone + Strong CTA</div>
-        </Card>
-        <Card>
-          <div className="text-sm text-gray-500 mb-1">Targeting Expansion</div>
-          <div className="text-xl font-bold">-6% CPA</div>
-          <div className="text-xs text-gray-500">New geo segments</div>
-        </Card>
-      </div>
-    </Layout>
+      <div className="text-center mt-6"><Button onClick={() => window.location.reload()}>🔄 Refresh Insights</Button></div>
+    </div>
   );
 }
