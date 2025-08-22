@@ -1,7 +1,7 @@
 import { Card, Stat, Pill } from "../components/UI";
 import { campaigns, monthlySpend } from "../data/mock";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { Play, PlusCircle, Import, Wand2, Loader2, Download, Eye } from "lucide-react";
+import { Play, PlusCircle, Import, Wand2, Loader2, Download, Eye, Settings } from "lucide-react";
 import { useMemo, useState, useEffect, useRef } from "react";
 import gsap from "gsap";
 
@@ -20,6 +20,9 @@ export default function CampaignHub() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedAds, setGeneratedAds] = useState([]);
   const [showAdsModal, setShowAdsModal] = useState(false);
+  const [showApiModal, setShowApiModal] = useState(false);
+  const [placidApiKey, setPlacidApiKey] = useState("");
+  const [placidTemplate, setPlacidTemplate] = useState("");
 
   // Animation refs
   const actionsRef = useRef();
@@ -27,6 +30,14 @@ export default function CampaignHub() {
   const statsRef = useRef();
   const filtersRef = useRef();
   const tableRef = useRef();
+
+  // Load API key from localStorage on component mount
+  useEffect(() => {
+    const savedApiKey = localStorage.getItem('placid_api_key');
+    const savedTemplate = localStorage.getItem('placid_template_id');
+    if (savedApiKey) setPlacidApiKey(savedApiKey);
+    if (savedTemplate) setPlacidTemplate(savedTemplate);
+  }, []);
 
   useEffect(() => {
     gsap.fromTo(actionsRef.current, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" });
@@ -42,36 +53,81 @@ export default function CampaignHub() {
 
   const avgRoi = Math.round(filtered.reduce((a, c) => a + c.roi, 0) / (filtered.length || 1));
 
-  // AI Ad Generation Function
-  const generateAdImages = async (prompt) => {
+  // Placid API Integration
+  const generateAdWithPlacid = async (templateData) => {
+    if (!placidApiKey) {
+      throw new Error("Placid API key not configured");
+    }
+
     try {
-      const response = await fetch('https://api.craiyon.com/v3', {
+      const response = await fetch(`https://api.placid.app/api/rest/${placidTemplate}`, {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${placidApiKey}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          prompt: prompt,
-          model: "art", // Options: "art", "photo", "drawing"
-          negative_prompt: "blurry, low quality, text, watermark, ugly, distorted"
+          create_now: true,
+          modifications: templateData
         })
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`Placid API error! status: ${response.status}`);
       }
 
       const data = await response.json();
-      return data.images || [];
+      return data.image_url;
     } catch (error) {
-      console.error('Image generation failed:', error);
-      // Fallback: Return mock data for demonstration
-      return [
-        "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDUxMiA1MTIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0yNTYgMTYwQzIxMi43IDE2MCA5NiAxNzYuNyA5NiAyMDBWMzEyQzk2IDMzNS4zIDExMi43IDM1MiAxMzYgMzUySDM3NkMzOTkuMyAzNTIgNDE2IDMzNS4zIDQxNiAzMTJWMjAwQzQxNiAxNzYuNyAzOTkuMyAxNjAgMzc2IDE2MEgyNTZaIiBmaWxsPSIjRTVFN0VCIi8+CjxjaXJjbGUgY3g9IjI1NiIgY3k9IjI1NiIgcj0iNDAiIGZpbGw9IiM5Q0EzQUYiLz4KPC9zdmc+",
-        "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDUxMiA1MTIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0yNTYgMTYwQzIxMi43IDE2MCA5NiAxNzYuNyA5NiAyMDBWMzEyQzk2IDMzNS4zIDExMi43IDM1MiAxMzYgMzUySDM3NkMzOTkuMyAzNTIgNDE2IDMzNS4zIDQxNiAzMTJWMjAwQzQxNiAxNzYuNyAzOTkuMyAxNjAgMzc2IDE2MEgyNTZaIiBmaWxsPSIjRTVFN0VCIi8+CjxjaXJjbGUgY3g9IjI1NiIgY3k9IjI1NiIgcj0iNDAiIGZpbGw9IiM5Q0EzQUYiLz4KPC9zdmc+",
-        "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDUxMiA1MTIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0yNTYgMTYwQzIxMi43IDE2MCA5NiAxNzYuNyA5NiAyMDBWMzEyQzk2IDMzNS4zIDExMi43IDM1MiAxMzYgMzUySDM3NkMzOTkuMyAzNTIgNDE2IDMzNS4zIDQxNiAzMTJWMjAwQzQxNiAxNzYuNyAzOTkuMyAxNjAgMzc2IDE2MEgyNTZaIiBmaWxsPSIjRTVFN0VCIi8+CjxjaXJjbGUgY3g9IjI1NiIgY3k9IjI1NiIgcj0iNDAiIGZpbGw9IiM5Q0EzQUYiLz4KPC9zdmc+"
-      ];
+      console.error('Placid API error:', error);
+      throw error;
     }
+  };
+
+  // Generate multiple ad variations
+  const generateAdImages = async () => {
+    const variations = [
+      {
+        product_name: formData.productName,
+        audience: formData.targetAudience,
+        platform: formData.platform,
+        call_to_action: "Shop Now",
+        color_scheme: "primary"
+      },
+      {
+        product_name: formData.productName,
+        audience: formData.targetAudience,
+        platform: formData.platform,
+        call_to_action: "Learn More",
+        color_scheme: "secondary"
+      },
+      {
+        product_name: formData.productName,
+        audience: formData.targetAudience,
+        platform: formData.platform,
+        call_to_action: "Get Started",
+        color_scheme: "accent"
+      }
+    ];
+
+    const imagePromises = variations.map(variation => 
+      generateAdWithPlacid(variation).catch(error => {
+        console.error('Failed to generate variation:', error);
+        return null;
+      })
+    );
+
+    const results = await Promise.all(imagePromises);
+    return results.filter(url => url !== null);
+  };
+
+  // Fallback image generation for demo purposes
+  const generateFallbackImages = () => {
+    return [
+      `https://via.placeholder.com/512x512/3B82F6/FFFFFF?text=${encodeURIComponent(formData.productName)}`,
+      `https://via.placeholder.com/512x512/10B981/FFFFFF?text=${encodeURIComponent(formData.productName)}`,
+      `https://via.placeholder.com/512x512/8B5CF6/FFFFFF?text=${encodeURIComponent(formData.productName)}`
+    ];
   };
 
   // Generate Campaign Handler
@@ -81,17 +137,29 @@ export default function CampaignHub() {
       return;
     }
 
+    if (!placidApiKey || !placidTemplate) {
+      alert("Please configure Placid API key and template ID in settings");
+      setShowApiModal(true);
+      return;
+    }
+
     setIsGenerating(true);
     
     try {
-      // Create AI prompt for ad generation
-      const prompt = `Professional ${formData.platform} advertisement for ${formData.productName} targeting ${formData.targetAudience}, modern design, high quality, marketing poster, commercial ad, clean layout, eye-catching, ${formData.platform === 'Meta' ? 'social media style' : formData.platform === 'Google' ? 'search ad style' : 'business professional style'}`;
+      let images;
       
-      console.log("Generating ads with prompt:", prompt);
-      
-      // Generate images using Craiyon API
-      const images = await generateAdImages(prompt);
-      
+      try {
+        console.log("Generating ads with Placid API...");
+        images = await generateAdImages();
+        
+        if (images.length === 0) {
+          throw new Error("No images generated from Placid API");
+        }
+      } catch (placidError) {
+        console.error("Placid API failed, using fallback:", placidError);
+        images = generateFallbackImages();
+      }
+
       // Create campaign data
       const newCampaign = {
         id: Date.now(),
@@ -101,7 +169,7 @@ export default function CampaignHub() {
         budget: parseInt(formData.budgetRange.split('-')[0]) * 1000 || 5000,
         roi: Math.floor(Math.random() * 100) + 50,
         score: Math.floor(Math.random() * 3) + 7,
-        images: images.slice(0, 6), // Take first 6 images
+        images: images,
         createdAt: new Date().toISOString(),
         audience: formData.targetAudience,
         aiLevel: formData.aiLevel
@@ -114,10 +182,28 @@ export default function CampaignHub() {
       
     } catch (error) {
       console.error("Campaign generation failed:", error);
-      alert("Failed to generate campaign. Please try again.");
+      alert(`Failed to generate campaign: ${error.message}`);
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  // API Configuration Handler
+  const handleSaveApiConfig = () => {
+    if (!placidApiKey.trim()) {
+      alert("Please enter a valid Placid API key");
+      return;
+    }
+    
+    if (!placidTemplate.trim()) {
+      alert("Please enter a valid Placid template ID");
+      return;
+    }
+
+    localStorage.setItem('placid_api_key', placidApiKey);
+    localStorage.setItem('placid_template_id', placidTemplate);
+    setShowApiModal(false);
+    alert("API configuration saved successfully!");
   };
 
   // Form input handlers
@@ -128,27 +214,16 @@ export default function CampaignHub() {
   // Download image handler
   const handleDownloadImage = async (imageUrl, index) => {
     try {
-      if (imageUrl.startsWith('data:image/')) {
-        // Handle data URLs
-        const link = document.createElement('a');
-        link.href = imageUrl;
-        link.download = `ad-creative-${index + 1}.png`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } else {
-        // Handle regular URLs - convert to blob first
-        const response = await fetch(imageUrl);
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `ad-creative-${index + 1}.png`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-      }
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `ad-creative-${index + 1}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Download failed:', error);
       alert('Download failed. Please try right-clicking and selecting "Save Image As"');
@@ -157,27 +232,22 @@ export default function CampaignHub() {
 
   // View image handler
   const handleViewImage = (imageUrl, index) => {
-    if (imageUrl.startsWith('data:image/')) {
-      // For data URLs, create a new window with the image
-      const newWindow = window.open('', '_blank');
-      newWindow.document.write(`
-        <html>
-          <head><title>Ad Creative ${index + 1}</title></head>
-          <body style="margin:0;padding:20px;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#f3f4f6;">
-            <img src="${imageUrl}" alt="Ad Creative ${index + 1}" style="max-width:100%;max-height:100%;object-fit:contain;" />
-          </body>
-        </html>
-      `);
-    } else {
-      // For regular URLs, just open in new tab
-      window.open(imageUrl, '_blank');
-    }
+    window.open(imageUrl, '_blank');
   };
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">Campaign Hub</h1>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-gray-900">Campaign Hub</h1>
+          <button
+            onClick={() => setShowApiModal(true)}
+            className="flex items-center gap-2 px-4 py-2 text-gray-600 border rounded-xl hover:bg-gray-50"
+          >
+            <Settings size={16} />
+            API Settings
+          </button>
+        </div>
 
         {/* Quick Actions */}
         <div ref={actionsRef} className="grid md:grid-cols-3 gap-4">
@@ -232,7 +302,10 @@ export default function CampaignHub() {
               <option>AI: Targeting only</option>
             </select>
           </div>
-          <div className="mt-4 flex justify-end">
+          <div className="mt-4 flex justify-between items-center">
+            <div className="text-sm text-gray-500">
+              {placidApiKey ? "✅ Placid API configured" : "⚠️ Configure Placid API to generate ads"}
+            </div>
             <button 
               className="px-4 py-2 bg-blue-600 text-white rounded-xl flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleGenerateCampaign}
@@ -328,6 +401,74 @@ export default function CampaignHub() {
           </table>
         </Card>
 
+        {/* API Configuration Modal */}
+        {showApiModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl max-w-md w-full">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-bold">Placid API Configuration</h2>
+                  <button 
+                    onClick={() => setShowApiModal(false)}
+                    className="text-gray-500 hover:text-gray-700 text-xl"
+                  >
+                    ×
+                  </button>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Placid API Key
+                    </label>
+                    <input
+                      type="password"
+                      className="w-full border rounded-xl px-3 py-2"
+                      placeholder="Enter your Placid API key"
+                      value={placidApiKey}
+                      onChange={(e) => setPlacidApiKey(e.target.value)}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Template ID
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full border rounded-xl px-3 py-2"
+                      placeholder="Enter your Placid template ID"
+                      value={placidTemplate}
+                      onChange={(e) => setPlacidTemplate(e.target.value)}
+                    />
+                  </div>
+                  
+                  <div className="text-xs text-gray-500">
+                    <p>• Get your API key from <a href="https://placid.app" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">placid.app</a></p>
+                    <p>• Create a template and copy its ID</p>
+                    <p>• Your credentials are stored locally in your browser</p>
+                  </div>
+                </div>
+                
+                <div className="flex justify-end gap-3 mt-6">
+                  <button 
+                    onClick={() => setShowApiModal(false)}
+                    className="px-4 py-2 text-gray-600 border rounded-xl hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleSaveApiConfig}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700"
+                  >
+                    Save Configuration
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Generated Ads Modal */}
         {showAdsModal && generatedAds.length > 0 && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -355,7 +496,7 @@ export default function CampaignHub() {
                               alt={`Ad creative ${index + 1}`}
                               className="w-full h-full object-cover"
                               onError={(e) => {
-                                e.target.src = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDUxMiA1MTIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0yNTYgMTYwQzIxMi43IDE2MCA5NiAxNzYuNyA5NiAyMDBWMzEyQzk2IDMzNS4zIDExMi43IDM1MiAxMzYgMzUySDM3NkMzOTkuMyAzNTIgNDE2IDMzNS4zIDQxNiAzMTJWMjAwQzQxNiAxNzYuNyAzOTkuMyAxNjAgMzc2IDE2MEgyNTZaIiBmaWxsPSIjRTVFN0VCIi8+CjxjaXJjbGUgY3g9IjI1NiIgY3k9IjI1NiIgcj0iNDAiIGZpbGw9IiM5Q0EzQUYiLz4KPC9zdmc+";
+                                e.target.src = `https://via.placeholder.com/512x512/6B7280/FFFFFF?text=Failed+to+Load`;
                               }}
                             />
                           </div>

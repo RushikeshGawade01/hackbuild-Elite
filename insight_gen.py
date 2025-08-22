@@ -1,27 +1,42 @@
 import os
 import pandas as pd
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import google.generativeai as genai
 import json
-import io
+import logging
+from dotenv import load_dotenv
 
-# Configure Gemini - Fix the API key configuration
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))  # Make sure this env var is set correctly
-model = genai.GenerativeModel("gemini-2.0-flash")
+# Load environment variables
+load_dotenv()
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Configure Gemini
+try:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise Exception("GEMINI_API_KEY environment variable is not set")
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    logger.info("Gemini API configured successfully")
+except Exception as e:
+    logger.error(f"Failed to configure Gemini API: {str(e)}")
+    raise Exception(f"Gemini API configuration failed: {str(e)}")
 
 app = FastAPI()
 
-# Configure CORS to allow frontend communication
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Add both localhost variations
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Add a simple GET endpoint for testing
 @app.get("/")
 async def root():
     return {"message": "Insight Generator API is running"}
@@ -29,41 +44,49 @@ async def root():
 @app.get("/test-insights")
 async def get_test_insights():
     """Test endpoint that returns sample insights"""
+    logger.info("Fetching test insights")
     return {
         "insights": [
-            "Your click-through rates are 15% lower than industry average - consider A/B testing different ad headlines",
-            "Competitors are investing 40% more in video content - this could be a key opportunity",
-            "Your conversion rates peak on Tuesday and Wednesday - optimize budget allocation accordingly",
-            "Mobile traffic shows higher engagement but lower conversion - improve mobile checkout flow",
-            "Competitor analysis shows they're targeting 3 demographics you're missing"
+            "Positive: Your click-through rates are 15% higher than industry average.",
+            "Negative: Competitors are investing 40% more in video content.",
+            "Positive: Your conversion rates peak on Tuesday and Wednesday.",
+            "Negative: Mobile traffic shows higher engagement but lower conversion.",
+            "Positive: Your targeting covers more demographics than competitors.",
+            "Negative: Competitor analysis shows they're optimizing budget better."
         ]
     }
 
 @app.post("/insight_gen")
-async def generate_insights(
-    competitors: UploadFile = File(...),
-    campaigns: UploadFile = File(...)
-):
+async def generate_insights():
     try:
-        # Validate file types
-        if not competitors.filename.endswith('.csv'):
-            raise HTTPException(status_code=400, detail="Competitors file must be CSV")
-        if not campaigns.filename.endswith('.csv'):
-            raise HTTPException(status_code=400, detail="Campaigns file must be CSV")
+        # Hard-coded CSV paths
+        competitors_path = "/Users/shriya/Documents/GitHub/logo_detect/hackbuild-Elite/backend/ad_analysis_results.csv"
+        campaigns_path = "/Users/shriya/Documents/GitHub/logo_detect/hackbuild-Elite/public/my_camp.csv"
 
-        # Read the uploaded files
-        competitors_content = await competitors.read()
-        campaigns_content = await campaigns.read()
-        
-        # Load CSVs from bytes
-        comp_df = pd.read_csv(io.StringIO(competitors_content.decode('utf-8')))
-        camp_df = pd.read_csv(io.StringIO(campaigns_content.decode('utf-8')))
+        # Check if CSV files exist
+        if not os.path.exists(competitors_path):
+            logger.error(f"Competitors CSV not found at {competitors_path}")
+            raise HTTPException(status_code=400, detail=f"Competitors CSV not found at {competitors_path}")
+        if not os.path.exists(campaigns_path):
+            logger.error(f"Campaigns CSV not found at {campaigns_path}")
+            raise HTTPException(status_code=400, detail=f"Campaigns CSV not found at {campaigns_path}")
 
-        # Validate dataframes are not empty
+        # Load CSVs
+        logger.info(f"Loading CSV files: {competitors_path}, {campaigns_path}")
+        try:
+            comp_df = pd.read_csv(competitors_path)
+            camp_df = pd.read_csv(campaigns_path)
+        except Exception as e:
+            logger.error(f"Error reading CSV files: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Failed to read CSV files: {str(e)}")
+
+        # Validate dataframes
         if comp_df.empty or camp_df.empty:
+            logger.error("One or both CSV files are empty")
             raise HTTPException(status_code=400, detail="CSV files cannot be empty")
 
-        # Generate more detailed summaries for better insights
+        
+        # Generate summaries
         comp_summary = f"""
         Competitors Data Summary:
         - Total records: {len(comp_df)}
@@ -80,28 +103,34 @@ async def generate_insights(
         - Statistical summary: {camp_df.describe(include="all").to_string()}
         """
 
-        # Enhanced prompt for better insights
+        # Enhanced prompt
         prompt = f"""
-        You are an expert marketing strategist and data analyst. Analyze the provided campaign data and competitor data to generate specific, actionable marketing insights.
+        You are an expert marketing strategist and data analyst. Analyze the provided campaign data (my data) and competitor data to generate specific, actionable positive and negative marketing insights by comparing them.
+
+        Positive insights: Areas where my campaigns perform better than competitors (strengths).
+        Negative insights: Areas where my campaigns perform worse than competitors or opportunities for improvement (weaknesses).
 
         IMPORTANT: Return ONLY valid JSON in this exact format (no markdown, no code fences, no additional text):
 
         {{
           "insights": [
-            "specific actionable insight 1",
-            "specific actionable insight 2",
-            "specific actionable insight 3",
-            "specific actionable insight 4",
-            "specific actionable insight 5"
+            "Positive: specific actionable insight 1",
+            "Negative: specific actionable insight 2",
+            "Positive: specific actionable insight 3",
+            "Negative: specific actionable insight 4",
+            "Positive: specific actionable insight 5",
+            "Negative: specific actionable insight 6"
           ]
         }}
 
-        Generate exactly 5 insights that are:
+        Generate exactly 3 positive and 3 negative insights (alternating starting with positive) that are:
         1. Specific and actionable
-        2. Based on data comparisons
+        2. Based on data comparisons between my campaigns and competitors
         3. Include metrics or percentages when possible
-        4. Focus on opportunities for improvement
+        4. Focus on opportunities for improvement in negative insights
         5. Address different aspects: targeting, content, timing, budget, channels
+
+        Prefix each insight with "Positive: " or "Negative: " as shown.
 
         MY CAMPAIGN DATA:
         {camp_summary}
@@ -110,31 +139,21 @@ async def generate_insights(
         {comp_summary}
         """
 
-        # Call Gemini API with error handling
+        # Call Gemini API
+        logger.info("Calling Gemini API for insights")
         try:
             response = model.generate_content(prompt)
             response_text = response.text.strip()
             
-            # Clean the response (remove any markdown formatting if present)
-            if response_text.startswith('```json'):
-                response_text = response_text.replace('```json', '').replace('```', '').strip()
-            elif response_text.startswith('```'):
-                response_text = response_text.replace('```', '').strip()
+            # Clean response
+            response_text = response_text.replace('```json', '').replace('```', '').strip()
                 
         except Exception as gemini_error:
-            print(f"Gemini API error: {str(gemini_error)}")
-            # Return fallback insights if Gemini fails
-            return {
-                "insights": [
-                    "Unable to generate AI insights at the moment. Please check your data and try again.",
-                    "Consider analyzing your top-performing campaigns and replicating successful elements.",
-                    "Review competitor strategies in your industry for new opportunities.",
-                    "Optimize your campaigns based on performance metrics and conversion rates.",
-                    "Test different targeting parameters to improve campaign effectiveness."
-                ]
-            }
+            logger.error(f"Gemini API error: {str(gemini_error)}")
+            raise HTTPException(status_code=500, detail=f"Gemini API error: {str(gemini_error)}")
 
-        # Parse Gemini response
+        # Parse response
+        logger.info("Parsing Gemini response")
         try:
             insights_json = json.loads(response_text)
             
@@ -145,24 +164,24 @@ async def generate_insights(
                 raise ValueError("Response missing 'insights' key")
             if not isinstance(insights_json["insights"], list):
                 raise ValueError("'insights' must be a list")
-            if len(insights_json["insights"]) == 0:
-                raise ValueError("Insights list is empty")
+            if len(insights_json["insights"]) != 6:
+                raise ValueError(f"Expected 6 insights, got {len(insights_json['insights'])}")
                 
+            logger.info("Successfully generated insights")
             return insights_json
             
         except json.JSONDecodeError as json_error:
-            print(f"JSON parsing error: {str(json_error)}")
-            print(f"Raw response: {response_text}")
-            return {"error": "Failed to parse AI response", "raw_response": response_text}
+            logger.error(f"JSON parsing error: {str(json_error)}, Raw response: {response_text}")
+            raise HTTPException(status_code=500, detail=f"Failed to parse AI response: {str(json_error)}")
         except ValueError as val_error:
-            print(f"Validation error: {str(val_error)}")
-            return {"error": f"Invalid response format: {str(val_error)}", "raw_response": response_text}
+            logger.error(f"Validation error: {str(val_error)}, Raw response: {response_text}")
+            raise HTTPException(status_code=500, detail=f"Invalid response format: {str(val_error)}")
 
     except HTTPException:
         raise
     except Exception as e:
-        print(f"General error: {str(e)}")
-        return {"error": f"Failed to process request: {str(e)}"}
+        logger.error(f"General error in insight_gen: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to process request: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
